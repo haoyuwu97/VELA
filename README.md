@@ -41,6 +41,7 @@ make
 ## Input format
 - **Mode 0**: each line has `xy xz yz`.
 - **Mode 1**: each line has `xx yy zz xy xz yz` (normal components first).
+
 **Mode 0 (3 components)**   
 The time-domain modulus is computed from the average of the three shear autocorrelation functions:
 ```math
