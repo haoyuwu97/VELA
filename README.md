@@ -64,17 +64,3 @@ Output headers include metadata for reproducibility:
 ```
 #dt=... mode=... Gtcut=... tail_param=...
 ```
-
-## Validation example (Ornstein-Uhlenbeck)
-A small OU-process generator is provided to validate that the computed `G(t)` follows an exponential decay.
-
-1. Generate synthetic mode-0 data:
-   ```bash
-   python3 scripts/generate_ou.py --nsteps 5000 --dt 0.01 --tau 1.0 --sigma 1.0
-   ```
-2. Build and run:
-   ```bash
-   make
-   ./Gt_Gw data/ou_mode0.dat out_gt.dat out_gw.dat 0.01 0
-   ```
-3. Compare `out_gt.dat` to `data/expected_gt.csv` (they should show the same exponential trend).
