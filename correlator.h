@@ -135,7 +135,7 @@ public:
 	void evaluate_mode1(const bool norm = false);
 	
 	// Evaluate the current state of the correlator
-	void calculate_Gw(const double dtime, const int time, const int Gtcut);
+	void calculate_Gw(const double dtime, const int time, const int Gtcut, const double tail_param = 2.0);
 
 	// Initialize all values (current and average) to zero
 	void initialize_mode0();
