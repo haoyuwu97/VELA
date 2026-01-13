@@ -5,11 +5,9 @@ This package computes stress autocorrelation functions in the time domain and tr
 
 ## Units and physical interpretation
 The shear modulus from equilibrium stress autocorrelation is typically defined as:
-
+```math
+G(t)=\frac{V}{kBT}<\sigma(0)\sigma(t)>
 ```
-G(t) = (V / kBT) * <σ(0) σ(t)>
-```
-
 where `σ` is a stress component, `V` is the system volume, `T` is temperature, and `kB` is Boltzmann's constant. Ensure that:
 - Stress components in the input file match your MD engine's output units.
 - `DT` matches the time unit of the input series.
