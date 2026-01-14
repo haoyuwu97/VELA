@@ -1,4 +1,4 @@
-# Modulus-time and modulus-frequency relationships (G(t) and G($\omega$)) based on autocorrelation function
+# VELA: ViscoElastic Linear-response Analyzer
 
 ## Overview
 This package computes stress autocorrelation functions in the time domain and transforms them to modulus-frequency relationships. The raw output should be scaled by `V/kBT` to obtain physical moduli, as noted in the CLI help.
