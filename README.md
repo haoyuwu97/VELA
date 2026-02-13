@@ -6,7 +6,7 @@ This package computes stress autocorrelation functions in the time domain and tr
 ## Units and physical interpretation
 The shear modulus from equilibrium stress autocorrelation is typically defined as:
 ```math
-G(t)=\frac{V}{kBT}<\sigma(0)\sigma(t)>
+G(t)=\frac{V}{kBT}\langle\sigma(0)\sigma(t)\rangle
 ```
 where `σ` is a stress component, `V` is the system volume, `T` is temperature, and `kB` is Boltzmann's constant. Ensure that:
 - Stress components in the input file match your MD engine's output units.
@@ -45,14 +45,14 @@ make
 **Mode 0 (3 components)**   
 The time-domain modulus is computed from the average of the three shear autocorrelation functions:
 ```math
-G(t)=\frac{V}{kBT}\frac{<\sigma_{xy}(0)\sigma_{xy}(t)>+<\sigma_{xz}(0)\sigma_{xz}(t)>+<\sigma_{yz}(0)\sigma_{yz}(t)>}{3}
+G(t)=\frac{V}{kBT}\frac{\langle\sigma_{xy}(0)\sigma_{xy}(t)\rangle+\langle\sigma_{xz}(0)\sigma_{xz}(t)\rangle+\langle\sigma_{yz}(0)\sigma_{yz}(t)\rangle}{3}
 ```
 Use Mode 0 when your input file only contains shear stresses.
 
 **Mode 1 (6 components)**  
 The time-domain modulus is computed from both normal and shear components with weighting:
 ```math
-G(t)=\frac{V}{kBT}\left(\frac{\langle N_{xy}(0)N_{xy}(t)\rangle+\langle N_{yz}(0)N_{yz}(t)\rangle+\langle N_{xz}(0)N_{xz}(t)\rangle}{30}+\frac{<\sigma_{xy}(0)\sigma_{xy}(t)>+<\sigma_{yz}(0)\sigma_{yz}(t)>+<\sigma_{xz}(0)\sigma_{xz}(t)>}{5}\right)
+G(t)=\frac{V}{kBT}\left(\frac{\langle N_{xy}(0)N_{xy}(t)\rangle+\langle N_{yz}(0)N_{yz}(t)\rangle+\langle N_{xz}(0)N_{xz}(t)\rangle}{30}+\frac{\langle\sigma_{xy}(0)\sigma_{xy}(t)\rangle+\langle\sigma_{yz}(0)\sigma_{yz}(t)\rangle+\langle\sigma_{xz}(0)\sigma_{xz}(t)\rangle}{5}\right)
 ```
 ```math
 N_{\alpha\beta}(t)=\sigma_{\alpha\alpha}(t)-\sigma_{\beta\beta}(t)
