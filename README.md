@@ -52,7 +52,7 @@ Use Mode 0 when your input file only contains shear stresses.
 **Mode 1 (6 components)**  
 The time-domain modulus is computed from both normal and shear components with weighting:
 ```math
-G(t)=\frac{V}{kBT}\left(\frac{\left<N_{xy}(0)N_{\alpha\beta}(t)\right>+<\sigma_{yz}(0)\sigma_{yz}(t)>+<\sigma_{xz}(0)\sigma_{xz}(t)>}{30}+\frac{<\sigma_{xy}(0)\sigma_{xy}(t)>+<\sigma_{yz}(0)\sigma_{yz}(t)>+<\sigma_{xz}(0)\sigma_{xz}(t)>}{5}\right)
+G(t)=\frac{V}{kBT}\left(\frac{\langle N_{xy}(0)N_{xy}(t)\rangle+\langle N_{yz}(0)N_{yz}(t)\rangle+\langle N_{xz}(0)N_{xz}(t)\rangle}{30}+\frac{<\sigma_{xy}(0)\sigma_{xy}(t)>+<\sigma_{yz}(0)\sigma_{yz}(t)>+<\sigma_{xz}(0)\sigma_{xz}(t)>}{5}\right)
 ```
 ```math
 N_{\alpha\beta}(t)=\sigma_{\alpha\alpha}(t)-\sigma_{\beta\beta}(t)
