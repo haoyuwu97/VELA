@@ -1,0 +1,409 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible}
+
+\title{VELA Final-Version Methodology and Development Plan}
+\author{Prepared from the consolidated design discussion}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Purpose and Scope}
+
+VELA (\textbf{V}isco\textbf{E}lastic \textbf{L}inear-response \textbf{A}nalyzer) is intended to become an equilibrium-stress based linear viscoelastic inference tool for molecular simulation data. The final target is not merely ``stress autocorrelation to modulus'' conversion, but a branch-aware, transform-aware, and uncertainty-aware framework that distinguishes what is directly identifiable from the supplied data and what is not.
+
+The central design principle is:
+\begin{quote}
+\textbf{VELA should first determine what quantity is identifiable from the input, and only then transform or infer frequency-domain rheological observables.}
+\end{quote}
+
+This document consolidates the full software and methodology plan, including the current correction phase, the reduced/absolute branch logic, the $\mu_A$ pathways, the transform stack, and the long-range roadmap toward the final CAFT-Bounds method.
+
+\section{Scientific Basis}
+
+\subsection{Why the current community practice needs refinement}
+
+A common equilibrium formula for the shear relaxation modulus is written schematically as
+\begin{equation}
+G(t) = \frac{V}{k_B T}\langle \sigma(0)\sigma(t)\rangle,
+\end{equation}
+which is frequently used for liquids, melts, and systems that clearly reach terminal flow within the simulated time window. This logic is also the current conceptual basis of the public VELA repository.
+
+However, for solids, glasses, permanently crosslinked networks, and slow systems with nonzero equilibrium shear modulus, the relation between the true relaxation modulus and the fixed-strain stress autocorrelation requires more care. Wittmer and co-workers showed that, for the solid case,
+\begin{equation}
+G(t)=C_{\tau}(t)=C_{\gamma}(t)+G_{\mathrm{eq}},
+\end{equation}
+where $C_{\gamma}(t)$ is the fixed-strain stress autocorrelation and $G_{\mathrm{eq}}$ is the static equilibrium modulus. Therefore, a fixed-strain stress autocorrelation alone does not, in general, determine the absolute plateau modulus. This is the key reason to distinguish \emph{reduced} and \emph{absolute} branches in VELA.\footnote{J. P. Wittmer et al., ``Shear-stress relaxation and ensemble transformation of shear-stress autocorrelation functions,'' \emph{Phys. Rev. E} \textbf{91}, 062306 (2015), \url{https://arxiv.org/abs/1508.03730}.}
+
+A complementary practical identity used by Wittmer and Kriuchevskyi is
+\begin{equation}
+G(t)=\mu_A-h(t),
+\end{equation}
+where $\mu_A$ is the affine shear elasticity and $h(t)$ is a rescaled mean-square displacement of the instantaneous shear stress. This identity provides the basis for the absolute branch when $\mu_A$ is available.\footnote{S. Kriuchevskyi et al., ``Computing the shear-stress relaxation modulus from the shear-stress mean-square displacement,'' \emph{Phys. Rev. E} \textbf{93}, 012103 (2016), DOI: 10.1103/PhysRevE.93.012103.}
+
+\subsection{Reduced vs absolute modulus}
+
+VELA will formalize the following distinction:
+\begin{itemize}[leftmargin=2em]
+  \item \textbf{Reduced branch}: the quantity directly identifiable from fixed-strain equilibrium stress fluctuations when no affine modulus information is supplied.
+  \item \textbf{Absolute branch}: the fully anchored modulus obtained when an absolute elastic reference is provided, most naturally through $\mu_A$.
+\end{itemize}
+
+In stress-only operation, the safe output is
+\begin{equation}
+G_{\mathrm{red}}(t) \equiv C_{\gamma}(t),
+\end{equation}
+and in frequency space
+\begin{equation}
+G'_{\mathrm{red}}(\omega)=G'(\omega)-G_{\mathrm{eq}}, \qquad G''(\omega)=G''(\omega).
+\end{equation}
+
+When $\mu_A$ is supplied, VELA can reconstruct the absolute branch. In the current raw-output convention used by the repository, this is implemented through
+\begin{equation}
+\mu_{F,\mathrm{raw}} = G_{\mathrm{red,raw}}(0), \qquad G_{e,\mathrm{raw}}=\mu_{A,\mathrm{raw}}-\mu_{F,\mathrm{raw}},
+\end{equation}
+and thus
+\begin{equation}
+G_{\mathrm{abs,raw}}(t)=G_{\mathrm{red,raw}}(t)+G_{e,\mathrm{raw}}.
+\end{equation}
+
+\section{Current Repository Status and Immediate Corrections}
+
+The public VELA repository currently contains the following top-level implementation pieces:
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{main.cc}
+  \item \texttt{correlator.h}
+  \item \texttt{correlator\_mode0.cc}
+  \item \texttt{correlator\_mode1.cc}
+  \item \texttt{correlator\_Gw.cc}
+  \item \texttt{Makefile}
+\end{itemize}
+The current README describes mode~0 as using \texttt{xy,xz,yz} and mode~1 as using \texttt{xx,yy,zz,xy,xz,yz}, with mode~1 theoretically defined in terms of normal-stress differences.\footnote{VELA public repository, \url{https://github.com/haoyuwu97/VELA}.}
+
+The first correction phase must remain a \emph{minimal-change} update on top of the present codebase.
+
+\subsection{Correction 1: mode 1 must use normal-stress differences}
+
+The README formula already states that mode~1 is based on
+\begin{equation}
+N_{xy}=\sigma_{xx}-\sigma_{yy},\qquad N_{xz}=\sigma_{xx}-\sigma_{zz},\qquad N_{yz}=\sigma_{yy}-\sigma_{zz},
+\end{equation}
+combined with the three shear stresses. The current public code path in \texttt{main.cc} passes raw $xx,yy,zz$ instead of these differences. This must be corrected first.
+
+\subsection{Correction 2: centered correlations must become the scientific default}
+
+The current repository already exposes a \texttt{norm} switch inside \texttt{evaluate\_mode0()} and \texttt{evaluate\_mode1()}, but the main program does not enable it. The correction phase sets centered correlations as the default scientific path:
+\begin{equation}
+\langle \delta \sigma(0)\,\delta \sigma(t)\rangle
+\end{equation}
+rather than raw $\langle \sigma(0)\sigma(t)\rangle$.
+
+\subsection{Correction 3: explicit reduced/absolute branch metadata}
+
+The code must stop silently labeling all output as ``$G(t)$'' without saying whether it is reduced or absolute. Even before the full final algorithm is implemented, the corrected version must at minimum emit branch metadata in the output headers.
+
+\section{Final Software Architecture}
+
+\subsection{Semantic layers}
+
+The final VELA design has three conceptually distinct layers.
+
+\subsubsection*{Tensor semantics}
+This concerns the structure of the input stress file.
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{shear3}: input columns are $xy,xz,yz$.
+  \item \texttt{tensor6}: input columns are $xx,yy,zz,xy,xz,yz$, internally converted to the three normal-stress differences plus the three shear stresses.
+\end{itemize}
+
+\subsubsection*{Branch semantics}
+This concerns what physical modulus can be identified.
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{reduced}: no affine anchor supplied; report reduced modulus only.
+  \item \texttt{absolute}: affine modulus supplied externally or computed internally; report absolute modulus.
+\end{itemize}
+No separate ``legacy'' physics branch is kept in the final design. Legacy behavior survives only as an interface compatibility layer.
+
+\subsubsection*{Transform semantics}
+This concerns how time-domain data are mapped into frequency-domain observables.
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{direct}
+  \item \texttt{i-rheo}
+  \item \texttt{schwarzl}
+  \item \texttt{caft-bounds}
+\end{itemize}
+
+\section{Automatic Branch Determination}
+
+The final logic should be automatic and deterministic.
+
+\subsection{Stress-only input}
+If the user provides only a time series of stress components (three or six columns, depending on tensor mode), VELA will automatically choose
+\begin{equation}
+\texttt{branch = reduced}.
+\end{equation}
+This is the safe branch because no plateau anchor is available.
+
+\subsection{Stress plus explicit scalar $\mu_A$}
+If the user supplies stress data and a scalar affine modulus, VELA will automatically choose
+\begin{equation}
+\texttt{branch = absolute}.
+\end{equation}
+In the currently corrected repository stage, this is done using a raw affine modulus in the same scaling convention as the unscaled VELA output.
+
+\subsection{Stress plus a time series or block series of $\mu_A$}
+This also triggers the absolute branch, but with statistical estimation of the affine modulus before propagation to the final outputs.
+
+\subsection{Stress plus coordinates/topology/force-field information}
+If the user supplies stress data together with the files and settings required to reconstruct the force field and instantaneous geometry, VELA should compute $\mu_A$ internally and then switch to the absolute branch.
+
+\section{$\mu_A$ Support Pathways}
+
+The final design supports three user-facing pathways.
+
+\subsection{Pathway A: scalar $\mu_A$}
+A single affine modulus value is supplied directly. This is the lightest-weight absolute-branch trigger.
+
+\subsection{Pathway B: statistical $\mu_A$ data}
+VELA reads a file containing per-frame or per-block affine modulus values, estimates the mean and uncertainty, and propagates that uncertainty through the absolute-branch outputs.
+
+\subsection{Pathway C: internal $\mu_A$ computation through libLAMMPS}
+This is the most important final absolute-branch pathway.
+
+LAMMPS is explicitly designed to be linked as an external library. The official documentation states that LAMMPS can be built as a static or shared library and driven via a C-style library interface.\footnote{LAMMPS documentation, ``Use LAMMPS as a library,'' \url{https://docs.lammps.org/Build_link.html}.}
+
+LAMMPS also provides the \texttt{compute born/matrix} command, which returns the second derivatives of the potential energy with respect to strain, i.e. the Born matrix contribution needed in finite-temperature elastic constant calculations. The official documentation and howto page explicitly identify this route as a reliable finite-temperature elastic-constant workflow.\footnote{LAMMPS documentation, ``compute born/matrix,'' \url{https://docs.lammps.org/compute_born_matrix.html}; ``Howto elastic,'' \url{https://docs.lammps.org/Howto_elastic.html}.}
+
+The final VELA $\mu_A$ backend should therefore support two libLAMMPS sub-modes:
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{analytic-born}: direct use of \texttt{compute born/matrix} when the chosen interaction styles implement analytic strain derivatives.
+  \item \texttt{numdiff-born}: automatic fallback to \texttt{compute born/matrix numdiff delta virial-ID} when analytic Born derivatives are unavailable.
+\end{itemize}
+
+\section{Transform Stack}
+
+\subsection{Direct transform}
+The current repository already uses a nontrivial direct transform on the irregular multi-tau time grid. This must be retained as the default fast transform and as a compatibility baseline.
+
+\subsection{i-RheoFT baseline}
+The i-RheoFT method targets the transformation of finite, discretely sampled relaxation functions into storage and loss moduli by analytic Fourier transformation of the sampled representation. It is a natural and necessary external baseline for VELA.\footnote{R. E. O'Connor, M. J. Tassieri, and R. M. L. Evans, ``i-RheoFT: Fourier transform-based interconversion of the time and frequency domains for polymeric materials,'' \emph{Macromolecules} \textbf{51}, 8537--8546 (2018), DOI: 10.1021/acs.macromol.8b00447.}
+
+\subsection{Schwarzl baseline}
+Schwarzl-based interconversion remains a classical baseline and is already exposed in RepTate. It should be available in VELA as a standard comparison transform.\footnote{RepTate documentation, G(t) application and available views, \url{https://reptate.readthedocs.io/manual/Applications/Gt/general.html}.}
+
+\subsection{Main final method: CAFT-Bounds}
+The main algorithmic innovation of VELA should be
+\begin{quote}
+\textbf{CAFT-Bounds: Constrained Analytic Fourier Transform with Bounds.}
+\end{quote}
+This is the final algorithm name to use in code, papers, and documentation.
+
+\section{CAFT-Bounds: Core Algorithm}
+
+CAFT-Bounds is designed to outperform direct noisy-tail transformation in exactly the regimes that matter most for MD rheology: finite windows, noisy tails, unknown plateaus, and nonuniform multi-tau grids.
+
+\subsection{Step 1: branch-aware input object}
+CAFT-Bounds never starts from an ambiguously named ``$G(t)$'' file. It starts from one of:
+\begin{equation}
+G_{\mathrm{red}}(t), \qquad G_{\mathrm{abs}}(t).
+\end{equation}
+The branch is already resolved before the transform step.
+
+\subsection{Step 2: trusted-window detection}
+The current repository uses a $k\sigma$ tail cutoff heuristic. In the final method this heuristic is retained only as a \emph{trusted-window detector}, not as a physical truncation rule.
+
+Given block- or bootstrap-derived error bars $\sigma_i$, define a trusted endpoint $t_c$ as the first location beyond which the raw data are no longer statistically distinguishable from noise, e.g.
+\begin{equation}
+|G(t_i)| \lesssim k\,\sigma_i
+\end{equation}
+for a user-controlled threshold $k$ and a short consecutive run criterion.
+
+\subsection{Step 3: constrained tail model}
+For $t>t_c$, CAFT-Bounds does not set the signal to zero. Instead it infers a tail from a physically admissible family.
+
+For the reduced branch:
+\begin{equation}
+G_{\mathrm{red}}(t)=\sum_{k=1}^{K} g_k e^{-t/\tau_k}, \qquad g_k\ge 0.
+\end{equation}
+
+For the absolute branch:
+\begin{equation}
+G_{\mathrm{abs}}(t)=G_e+\sum_{k=1}^{K} g_k e^{-t/\tau_k}, \qquad g_k\ge 0,\quad G_e\ge 0.
+\end{equation}
+
+The $\tau_k$ are fixed on a logarithmic grid; only the amplitudes and (if needed) the plateau are optimized.
+
+\subsection{Step 4: constrained point estimate}
+The default point estimate is a weighted nonnegative least-squares or quadratic-program problem,
+\begin{equation}
+\min_x \; \|W(Ax-y)\|_2^2 + \lambda \|Dx\|_2^2,
+\end{equation}
+subject to positivity constraints. Here $y$ is the trusted time-domain prefix, $A$ is the time-domain basis operator, $W$ encodes uncertainty, and $D$ is a smoothness operator. This preserves a well-conditioned and reproducible default path before any future Bayesian extension.
+
+\subsection{Step 5: bounds}
+The decisive extra layer is to compute, for each frequency,
+\begin{equation}
+G'_{\min}(\omega),\;G'_{\max}(\omega),\qquad
+G''_{\min}(\omega),\;G''_{\max}(\omega)
+\end{equation}
+across all admissible tail models consistent with the trusted prefix, uncertainties, branch semantics, and physical constraints.
+
+This is the reason the algorithm is called \emph{CAFT-Bounds}: the output is not just a curve, but a curve together with a statement of frequency-wise identifiability.
+
+\subsection{Step 6: analytic transform of prefix + tail}
+The final frequency-domain result is obtained by analytic transformation of two pieces:
+\begin{enumerate}[leftmargin=2em]
+  \item the measured trusted prefix on the irregular multi-tau time grid,
+  \item the constrained exponential tail model.
+\end{enumerate}
+For a generalized Maxwell tail,
+\begin{align}
+G'(\omega) &= G_e + \sum_k g_k \frac{\omega^2 \tau_k^2}{1+\omega^2\tau_k^2},\\
+G''(\omega) &= \sum_k g_k \frac{\omega \tau_k}{1+\omega^2\tau_k^2}.
+\end{align}
+
+\section{Implementation Roadmap}
+
+\subsection{Stage 1: immediate corrections (minimal change)}
+\begin{enumerate}[leftmargin=2em]
+  \item Fix mode~1 to use normal-stress differences.
+  \item Switch the default evaluation path to centered correlations.
+  \item Introduce explicit branch metadata and a minimal absolute branch via scalar raw $\mu_A$.
+\end{enumerate}
+
+\subsection{Stage 2: robust branch engine}
+\begin{enumerate}[leftmargin=2em]
+  \item Automatic reduced/absolute branch determination.
+  \item Stress-only default to reduced branch.
+  \item External scalar and series $\mu_A$ support.
+\end{enumerate}
+
+\subsection{Stage 3: libLAMMPS $\mu_A$ backend}
+\begin{enumerate}[leftmargin=2em]
+  \item Integrate libLAMMPS.
+  \item Implement analytic Born and numdiff Born paths.
+  \item Produce a detailed $\mu_A$ report with diagnostics.
+\end{enumerate}
+
+\subsection{Stage 4: transform stack completion}
+\begin{enumerate}[leftmargin=2em]
+  \item Modularize the current direct transform.
+  \item Add i-RheoFT baseline.
+  \item Add Schwarzl baseline.
+  \item Implement CAFT-Bounds v1.
+\end{enumerate}
+
+\subsection{Stage 5: validation and method paper}
+\begin{enumerate}[leftmargin=2em]
+  \item Synthetic benchmarks: Maxwell fluids, solids with plateau, noisy truncated data.
+  \item MD benchmarks: at least one fluid/melt case and one permanent-network/solid case.
+  \item Comparisons against direct, i-RheoFT, Schwarzl, and external workflows such as RepTate.
+\end{enumerate}
+
+\section{Validation Strategy}
+
+The validation plan must be built around the actual failure modes VELA is designed to fix.
+
+\subsection{Synthetic tests}
+At minimum, the following synthetic truth models are required:
+\begin{enumerate}[leftmargin=2em]
+  \item Single Maxwell fluid.
+  \item Multi-mode Maxwell fluid.
+  \item Permanent solid with nonzero plateau:
+  \begin{equation}
+  G(t)=G_e+\sum_i g_i e^{-t/\tau_i}.
+  \end{equation}
+  \item Truncated and noisy plateau-bearing signals, where direct tail truncation is known to fail.
+\end{enumerate}
+
+\subsection{MD tests}
+The first manuscript does not need vitrimer-specific application yet. It should focus on:
+\begin{enumerate}[leftmargin=2em]
+  \item a fluid or melt case, where reduced and absolute numerically coincide in practice,
+  \item a permanent-network or solid-like case, where the reduced/absolute distinction is essential.
+\end{enumerate}
+
+\section{Why This Design Is Distinctive}
+
+VELA does not need to be the broadest rheology suite in existence. It needs to be \emph{uniquely strong} in its target problem class. Its distinctive features are:
+\begin{enumerate}[leftmargin=2em]
+  \item automatic reduced/absolute branch semantics,
+  \item integrated $\mu_A$ acquisition pathways,
+  \item four-way transform stack (direct, i-RheoFT, Schwarzl, CAFT-Bounds),
+  \item low-frequency bounds and trusted-window reporting rather than blind extrapolation.
+\end{enumerate}
+
+Taken together, these features make VELA not just a converter, but a branch-aware viscoelastic inference tool.
+
+\section{Immediate Deliverables for the Current Development Step}
+
+The current code-update step should deliver the following concrete changes on top of the public repository:
+\begin{enumerate}[leftmargin=2em]
+  \item mode~1 corrected to use normal-stress differences,
+  \item centered correlations turned on by default,
+  \item reduced/absolute branch metadata introduced,
+  \item scalar raw $\mu_A$ support added as the first absolute-branch trigger,
+  \item README updated to describe the corrected semantics,
+  \item smoke-test and compilation verification performed.
+\end{enumerate}
+
+These changes are intentionally minimal but scientifically decisive: they correct the most immediate semantic and implementation errors without yet refactoring the whole codebase.
+
+\section{Conclusion}
+
+The final vision of VELA is now cleanly defined. It will not simply be a tool that transforms stress autocorrelation functions into viscoelastic curves. Instead, it will be a software framework that:
+\begin{itemize}[leftmargin=2em]
+  \item identifies whether the input supports a reduced or absolute modulus,
+  \item acquires or computes $\mu_A$ when possible,
+  \item provides standard external baselines (direct, Schwarzl, i-RheoFT),
+  \item and deploys CAFT-Bounds as its distinctive main method for trustworthy low-frequency rheology under finite-window uncertainty.
+\end{itemize}
+
+That is the complete target architecture toward which the present corrected repository stage is the first operational step.
+
+\begin{thebibliography}{9}
+
+\bibitem{vela_repo}
+H. Wu, \emph{VELA public repository}, GitHub, \url{https://github.com/haoyuwu97/VELA}.
+
+\bibitem{wittmer2015}
+J. P. Wittmer, H. Xu, O. Benzerara, P. Politi, M. P. Ciamarra, and J. Baschnagel,
+``Shear-stress relaxation and ensemble transformation of shear-stress autocorrelation functions,''
+\emph{Physical Review E} \textbf{91}, 062306 (2015).
+
+\bibitem{kriuchevskyi2016}
+S. Kriuchevskyi, J. P. Wittmer, J. Baschnagel, and D. Vlassopoulos,
+``Computing the shear-stress relaxation modulus from the shear-stress mean-square displacement,''
+\emph{Physical Review E} \textbf{93}, 012103 (2016).
+
+\bibitem{irheo2018}
+R. E. O'Connor, M. Tassieri, and R. M. L. Evans,
+``i-RheoFT: Fourier transform-based interconversion of the time and frequency domains for polymeric materials,''
+\emph{Macromolecules} \textbf{51}, 8537--8546 (2018).
+
+\bibitem{reptate}
+RepTate documentation, G(t) application and views,
+\url{https://reptate.readthedocs.io/manual/Applications/Gt/general.html}.
+
+\bibitem{lammpslib}
+LAMMPS documentation, ``Use LAMMPS as a library,''
+\url{https://docs.lammps.org/Build_link.html}.
+
+\bibitem{bornmatrix}
+LAMMPS documentation, ``compute born/matrix'' and ``Howto elastic,''
+\url{https://docs.lammps.org/compute_born_matrix.html},
+\url{https://docs.lammps.org/Howto_elastic.html}.
+
+\end{thebibliography}
+
+\end{document}
